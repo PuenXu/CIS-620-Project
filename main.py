@@ -6,6 +6,9 @@ from robot import Robot
 from visual import *
 import json
 
+map = "maps/map.json" # small map, 5 robots
+# map = "maps/maze.json" # large maze, 8 robots
+
 # -------------------- Helper Functions --------------------
 def load_config(path):
     """Load environment and robot configuration from JSON file."""
@@ -19,6 +22,8 @@ def load_config(path):
     COMM_RANGE = cfg["comm_range"]
     OBSTACLES = [tuple(pos) for pos in cfg["obstacles"]]
     ROBOTS_POS = [tuple(pos) for pos in cfg["robots"]]
+
+    set_cell_size(CELL_SIZE)
 
     return GRID_W, GRID_H, CELL_SIZE, SENSE_RADIUS, COMM_RANGE, OBSTACLES, ROBOTS_POS
 
@@ -66,7 +71,7 @@ def render(screen, font, robots, merged, label_h):
 # -------------------- Main Loop --------------------
 def main():
     # Load environment and robot configuration
-    GRID_W, GRID_H, CELL_SIZE, SENSE_RADIUS, COMM_RANGE, OBSTACLES, ROBOTS_POS = load_config("maps/map.json")
+    GRID_W, GRID_H, CELL_SIZE, SENSE_RADIUS, COMM_RANGE, OBSTACLES, ROBOTS_POS = load_config(map)
 
     # Initialize robots
     robots = [
@@ -78,7 +83,7 @@ def main():
 
     # Animation & recording setup
     animation = True
-    record = True
+    record = False
     fps = 30
 
     if animation:

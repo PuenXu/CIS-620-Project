@@ -2,10 +2,13 @@ import pygame
 from map import UNKNOWN, FREE, OCCUPIED
 import random
 
-CELL_SIZE = 25
 COLOR_UNKNOWN = (130, 130, 130)
 COLOR_FREE = (255, 255, 255)
 COLOR_OCCUPIED = (0, 0, 0)
+
+def set_cell_size(size):
+    global CELL_SIZE
+    CELL_SIZE = size
 
 def id_to_color(robot_id):
     rng = random.Random(robot_id+5)
