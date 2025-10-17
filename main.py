@@ -9,6 +9,12 @@ import json
 map = "maps/map.json" # small map, 5 robots
 # map = "maps/maze.json" # large maze, 8 robots
 
+strategy = "closest_frontier"
+# strategy = "auction"
+
+animation = True
+record = False
+
 # -------------------- Helper Functions --------------------
 def load_config(path):
     """Load environment and robot configuration from JSON file."""
@@ -75,15 +81,13 @@ def main():
 
     # Initialize robots
     robots = [
-        Robot(Map(GRID_W, GRID_H, OBSTACLES), pos, rid+1, SENSE_RADIUS, COMM_RANGE)
+        Robot(Map(GRID_W, GRID_H, OBSTACLES), pos, rid+1, SENSE_RADIUS, COMM_RANGE, strategy=strategy)
         for rid, pos in enumerate(ROBOTS_POS)
     ]
     for r in robots:
         r.robots = robots  # share reference to all robots
 
     # Animation & recording setup
-    animation = True
-    record = False
     fps = 30
 
     if animation:
@@ -133,10 +137,15 @@ def main():
     unknown_cells = np.sum(merged == -1)
     completeness = 1.0 - (unknown_cells / total_cells)
 
+    print("Steps:", steps)
+    print("Completeness:", completeness)
+
+    if strategy == "auction":
+        for r in robots:
+            print(f"Robot {r.id}: Auctions started={r.auctions_started}, kept={r.auctions_kept}, lost={r.auctions_lost_to}")
+
     return steps, completeness
 
 # -------------------- Run --------------------
 if __name__ == "__main__":
-    steps, completeness = main()
-    print("Steps:", steps)
-    print("Completeness:", completeness)
+    main()

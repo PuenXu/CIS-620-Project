@@ -1,12 +1,13 @@
 import random
-from utils import astar
 from map import UNKNOWN
-import numpy as np
+from utils import solve_tsp
+from collections import defaultdict
+from task_allocation import TaskAllocation
 
 random.seed(5)
 
 class Robot:
-    def __init__(self, map, pos, id, sense_radius, comm_range=None):
+    def __init__(self, map, pos, id, sense_radius, comm_range=None, strategy="closest_frontier"):
         # Config
         self.map = map
         self.pos = pos
@@ -19,6 +20,15 @@ class Robot:
 
         self.path = []
         self.target = None
+        self.target_candidates = []
+        
+        # Auction
+        self.auctions_started = 0
+        self.auctions_kept = 0
+        self.auctions_lost_to = defaultdict(int)
+
+        # Task Allocation
+        self.task_allocator = TaskAllocation(self, strategy=strategy)
 
         # Initial sensing
         x, y = self.pos
@@ -63,31 +73,57 @@ class Robot:
                                 frontiers.append((x, y))
                                 break
         return frontiers
+    
+    # -------------------- Game Theoretic Utilities --------------------
+    def find_nash_eq(self, neighbors):
+        # To do
+        # Estimate the neighbors' payoff to the tasks, approximate NE
+        pass
 
+    def sample_tasks(self):
+        # To do
+        # Should be similar to sample_candidates, but also need to check they are reachable to me by A*
+        pass
+
+    # -------------------- Auction Utilities --------------------
+    def sample_candidates(self, frontiers, len_candidates):
+        candidates = [p for p in self.target_candidates if p in frontiers]
+        num_to_sample = len_candidates - len(candidates)
+        if num_to_sample > 0:
+            possible_new = [p for p in frontiers if p not in candidates]
+            if possible_new:
+                new_candidates = random.sample(
+                    possible_new,
+                    min(num_to_sample, len(possible_new))
+                )
+            else:
+                new_candidates = []
+            candidates.extend(new_candidates)
+        return candidates
+
+    def find_target(self, tsp=False):
+        if tsp:
+            sorted_tour = solve_tsp(self.pos, self.target_candidates)
+            target = sorted_tour[0]
+        else:
+            target = max(self.target_candidates, key=lambda p: self.utility(p), default=None)
+        return target
+
+    def cost(self, point):
+        return abs(self.pos[0] - point[0]) + abs(self.pos[1] - point[1])
+
+    def utility(self, point):
+        return self.map.info_gain(point, self.sense_radius) - self.cost(point)
+    
     # -------------------- Exploration --------------------
     def explore(self):
+
         if not self.path:
             frontiers = self.find_frontiers()
-            if not frontiers:
-                self.target = None
+            self.path, self.target = self.task_allocator.assign_target(frontiers)
+            if not self.path:
                 return False
-
-            # Sort frontiers by distance to robot
-            frontiers.sort(key=lambda p: abs(self.pos[0]-p[0]) + abs(self.pos[1]-p[1]))
-            self.target_candidates = frontiers
-
-            while self.target_candidates:
-                target = self.target_candidates.pop(0)  # pick closest frontier
-                path = astar(self.pos, target, self.map.explored_map)
-                if path:  # reachable
-                    self.path = path[1:]  # skip current position
-                    self.target = target
-                    return True
-                # else: try the next closest frontier
-
-            # None of the frontiers are reachable
-            self.target = None
-            return False
+            return True
 
         # Move one step along the path
         if self.path:
