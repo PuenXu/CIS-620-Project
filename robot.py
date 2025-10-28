@@ -1,6 +1,6 @@
 import random
 from map import UNKNOWN
-from utils import solve_tsp
+from utils import solve_tsp, astar
 from collections import defaultdict
 from task_allocation import TaskAllocation
 
@@ -75,15 +75,34 @@ class Robot:
         return frontiers
     
     # -------------------- Game Theoretic Utilities --------------------
-    def find_nash_eq(self, neighbors):
-        # To do
-        # Estimate the neighbors' payoff to the tasks, approximate NE
-        pass
+    def sample_tasks(self, frontiers, len_candidates):
+        """
+        Sample up to len_candidates frontiers that are reachable by A*.
+        """
+        # Start with any existing candidates that are still in frontiers
+        candidates = [p for p in self.target_candidates if p in frontiers]
+        num_to_sample = len_candidates - len(candidates)
 
-    def sample_tasks(self):
-        # To do
-        # Should be similar to sample_candidates, but also need to check they are reachable to me by A*
-        pass
+        if num_to_sample > 0:
+            # Possible new candidates from frontiers not yet in candidates
+            possible_new = [p for p in frontiers if p not in candidates]
+
+            # Filter only reachable ones
+            reachable_new = []
+            for p in possible_new:
+                path = astar(self.pos, p, self.map.explored_map)
+                if path:  # only keep if path exists
+                    reachable_new.append(p)
+
+            # Randomly sample from reachable new candidates
+            if reachable_new:
+                new_candidates = random.sample(
+                    reachable_new,
+                    min(num_to_sample, len(reachable_new))
+                )
+                candidates.extend(new_candidates)
+
+        return candidates
 
     # -------------------- Auction Utilities --------------------
     def sample_candidates(self, frontiers, len_candidates):

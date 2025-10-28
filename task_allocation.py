@@ -1,4 +1,5 @@
 from utils import astar
+from nash_eq import run_ga
 
 class TaskAllocation:
     """
@@ -89,18 +90,26 @@ class TaskAllocation:
 
         robot = self.robot
         neighbors = robot.neighbors
-        num_neighbors = len(neighbors)
-        num_tasks = num_neighbors
+        all_robots = [robot] + neighbors
+        num_tasks = len(all_robots)
 
-        # To do - write sample_tasks
+        # Sample frontiers for allocation
         tasks = robot.sample_tasks(frontiers, num_tasks)
 
-        # To d0 - write find_nash_eq
-        nash_eq = robot.find_nash_eq(tasks, neighbors)
-        task = nash_eq[0]
-            
+        if not tasks:
+            return None, None
+
+        # GA-based task allocation
+        robot_positions = [r.pos for r in all_robots]
+        task_positions = tasks
+        
+        best_allocation, _ = run_ga(robot_positions, task_positions, generations=50, pop_size=50)
+
+        # Pick task assigned to this robot (first in list)
+        task = task_positions[best_allocation[0]]
+
+        # Plan path
         path = astar(robot.pos, task, robot.map.explored_map)
         if path:
             return path[1:], task
-
         return None, None

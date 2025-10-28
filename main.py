@@ -9,8 +9,9 @@ import json
 map = "maps/map.json" # small map, 5 robots
 # map = "maps/maze.json" # large maze, 8 robots
 
-strategy = "closest_frontier"
+# strategy = "closest_frontier"
 # strategy = "auction"
+strategy = "competitive"
 
 animation = True
 record = False
