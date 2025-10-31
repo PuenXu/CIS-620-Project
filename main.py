@@ -100,9 +100,13 @@ def main():
     # Main exploration loop
     while running:
         running = False
+        # If cooperative algorithm, we need to run an exploratory step first since robots stepping individually wouldn't make sense
+        if strategy == "cooperative" and len(robots) > 0:
+            # Find the path for every robot before they step 
+            robots[0].task_allocator.assign_target()
         # Step each robot
         for r in robots:
-            if r.step():
+            if r.step(strategy == "cooperative"):
                 running = True
         steps += 1
 

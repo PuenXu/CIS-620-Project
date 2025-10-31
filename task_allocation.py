@@ -1,5 +1,73 @@
+import random
+import math
 from utils import astar
 from nash_eq import run_ga
+from collections import defaultdict
+
+# We need a way to classify leaders and citizens first; paper said 10 robots per leader but we can tune this
+def classify_leaders_and_citizens(robots, p=0.1):
+    N = len(robots)
+    target_num_leaders = max(1, int(p * N))
+
+    # pick the leaders
+    shuffled = robots[:] 
+    random.shuffle(shuffled)
+    
+    leaders = []
+
+    for r in shuffled:
+        if any(n in leaders for n in r.neighbors):
+            continue
+        leaders.append(r)
+        if len(leaders) >= target_num_leaders:
+            break
+
+    # This guarantees at least one leader, but we can error check just in case
+    assert len(leaders) > 0, "must have at least one leader"
+    
+    citizens = defaultdict(list)
+
+    for r in robots:
+        if r in leaders:
+            continue 
+
+        ln = [L for L in leaders if L in r.neighbors]
+
+        #if there is a leader neighbor, pick from neighbors, else pick absolute closest
+        if ln:
+            # choose closest neighbor
+            leader = min(ln, key=lambda L: math.dist(L.pos, r.pos))
+        else:
+            # choose closest non-neighbor
+            leader = min(leaders, key=lambda L: math.dist(L.pos, r.pos))
+
+        citizens[leader].append(r)
+
+    return leaders, citizens
+
+def aggregate_votes(votes, V, all_tasks):
+    vote_counts = defaultdict(lambda: defaultdict(int))
+    for vote in votes:
+        for r, t in vote.items():
+            vote_counts[r][t] += 1
+
+    assignment = {}
+    for r, task_dict in vote_counts.items():
+        best_task = max(task_dict, key=task_dict.get)  # plurality, which was used in the paper, but we could maybe enhance this
+        assignment[r] = best_task
+
+    unassigned = [r for r in V if r not in assignment]
+
+    assigned_tasks = set(assignment.values())
+    remaining_tasks = [t for t in all_tasks if t not in assigned_tasks]
+
+    if unassigned:
+        robot_pos = [r.pos for r in unassigned]
+        chrom, _ = run_ga(robot_pos, remaining_tasks)
+        for i, r in enumerate(unassigned):
+            assignment[r] = remaining_tasks[chrom[i]]
+
+    return assignment
 
 class TaskAllocation:
     """
@@ -19,6 +87,8 @@ class TaskAllocation:
             return self.auction(frontiers)
         elif self.strategy == "competitive":
             return self.competitive(frontiers)
+        elif self.strategy == "cooperative":
+            raise ValueError(f"Assigning cooperative target at independent location") #realistically this should not be called
         else:
             raise ValueError(f"Unknown strategy: {self.strategy}")
 
@@ -113,3 +183,36 @@ class TaskAllocation:
         if path:
             return path[1:], task
         return None, None
+
+    # Strategy 4 - Cooperative
+    def cooperative(self):
+        leaders, citizens = classify_leaders_and_citizens(self.robot.robots)   
+        for leader in leaders:
+            V = [leader] + citizens[leader]
+            num_agents = len(V)
+
+            frontiers = leader.find_frontiers()
+            tasks = leader.sample_tasks(frontiers, num_agents)
+            if not tasks:
+                continue
+
+            votes = []
+            # Idea: we find the nash equilibrium based on a vote
+            # The vote itself is just what the robot thinks is the best tasks for each cluster
+            for r in V:
+                vote_scores = r.vote_on_tasks(tasks)  # dict {r_i: best task for r_i according to r}
+                votes.append(vote_scores)
+
+            allocation = aggregate_votes(votes, V, tasks)
+
+            for i, r in enumerate(V):
+                assigned_task = allocation[r]
+                path = astar(r.pos, assigned_task, r.map.explored_map)
+                if path:
+                    r.path = path[1:]
+                    r.target = assigned_task
+    
+   
+
+        
+

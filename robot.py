@@ -3,6 +3,7 @@ from map import UNKNOWN
 from utils import solve_tsp, astar
 from collections import defaultdict
 from task_allocation import TaskAllocation
+from nash_eq import run_ga
 
 random.seed(5)
 
@@ -72,9 +73,24 @@ class Robot:
                             if self.map.explored_map[ny, nx] == -1:
                                 frontiers.append((x, y))
                                 break
-        return frontiers
+        return frontiers    
+    
     
     # -------------------- Game Theoretic Utilities --------------------
+    def vote_on_tasks(self, tasks):
+        #assume the robot doesn't know where the non-neighbor robots are
+        local_robots = self.neighbors + [self]
+        robot_positions = [r.pos for r in local_robots]
+        task_positions = tasks
+
+        best_allocation, _ = run_ga(robot_positions, task_positions, generations=50, pop_size=50)
+
+        vote = {}
+        for i, r in enumerate(local_robots):
+            vote[r] = task_positions[best_allocation[i]]
+
+        return vote
+
     def sample_tasks(self, frontiers, len_candidates):
         """
         Sample up to len_candidates frontiers that are reachable by A*.
@@ -103,6 +119,7 @@ class Robot:
                 candidates.extend(new_candidates)
 
         return candidates
+
 
     # -------------------- Auction Utilities --------------------
     def sample_candidates(self, frontiers, len_candidates):
@@ -135,9 +152,10 @@ class Robot:
         return self.map.info_gain(point, self.sense_radius) - self.cost(point)
     
     # -------------------- Exploration --------------------
-    def explore(self):
-
+    def explore(self, is_cooperative):
         if not self.path:
+            if is_cooperative: #cooperative should not be finding their own paths
+                return False
             frontiers = self.find_frontiers()
             self.path, self.target = self.task_allocator.assign_target(frontiers)
             if not self.path:
@@ -152,7 +170,7 @@ class Robot:
         return True
 
     # -------------------- Step --------------------
-    def step(self):
+    def step(self, is_cooperative):
         # If complete
         if not (UNKNOWN in self.map.explored_map):
             return False
@@ -163,4 +181,4 @@ class Robot:
             self.exchange_map(neighbor)
 
         # Explore normally
-        return self.explore()
+        return self.explore(is_cooperative)

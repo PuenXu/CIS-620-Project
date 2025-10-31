@@ -19,8 +19,16 @@ class Individual:
     
     @classmethod
     def create_chromosome(cls, robots, tasks):
-        chrom = list(range(len(tasks)))
-        random.shuffle(chrom)
+        R = len(robots)
+        T = len(tasks)
+
+        # cooperative will have less robots than tasks
+        if R < T:
+            chrom = random.sample(range(T), R)
+        else:
+            chrom = list(range(T))
+            random.shuffle(chrom)
+
         return cls(chrom, robots, tasks)
     
     def cal_fitness(self):
