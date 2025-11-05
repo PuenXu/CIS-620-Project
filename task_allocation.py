@@ -95,15 +95,24 @@ class TaskAllocation:
 
         # Sample frontiers for allocation
         tasks = robot.sample_tasks(frontiers, num_tasks)
-
         if not tasks:
             return None, None
 
-        # GA-based task allocation
+        # Prepare positions
         robot_positions = [r.pos for r in all_robots]
         task_positions = tasks
-        
-        best_allocation, _ = run_ga(robot_positions, task_positions, generations=50, pop_size=50)
+
+        # GA-based task allocation using info_gain - α * distance
+        best_allocation, best_utility = run_ga(
+            robots=robot_positions,
+            tasks=task_positions,
+            map_obj=robot.map,          # your map instance providing info_gain
+            pop_size=50,
+            generations=50,
+            sense_radius=2,             # radius for info_gain
+            alpha=1.0,                  # cost weighting (tune as needed)
+            verbose=False
+        )
 
         # Pick task assigned to this robot (first in list)
         task = task_positions[best_allocation[0]]
