@@ -64,6 +64,7 @@ def aggregate_votes(votes, V, all_tasks):
     if unassigned:
         robot_pos = [r.pos for r in unassigned]
         chrom, _ = run_ga(robot_pos, remaining_tasks)
+        print(chrom)
         for i, r in enumerate(unassigned):
             assignment[r] = remaining_tasks[chrom[i]]
 
@@ -207,10 +208,11 @@ class TaskAllocation:
 
             for i, r in enumerate(V):
                 assigned_task = allocation[r]
-                path = astar(r.pos, assigned_task, r.map.explored_map)
-                if path:
-                    r.path = path[1:]
-                    r.target = assigned_task
+                if assigned_task:
+                    path = astar(r.pos, assigned_task, r.map.explored_map)
+                    if path:
+                        r.path = path[1:]
+                        r.target = assigned_task
     
    
 

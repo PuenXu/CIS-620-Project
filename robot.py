@@ -87,7 +87,10 @@ class Robot:
 
         vote = {}
         for i, r in enumerate(local_robots):
-            vote[r] = task_positions[best_allocation[i]]
+            if i < len(task_positions):
+                vote[r] = task_positions[best_allocation[i]]
+            else:
+                vote[r] = None
 
         return vote
 

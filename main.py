@@ -11,7 +11,7 @@ map = "maps/map.json" # small map, 5 robots
 
 # strategy = "closest_frontier"
 # strategy = "auction"
-strategy = "competitive"
+strategy = "cooperative"
 
 animation = True
 record = False
@@ -103,7 +103,7 @@ def main():
         # If cooperative algorithm, we need to run an exploratory step first since robots stepping individually wouldn't make sense
         if strategy == "cooperative" and len(robots) > 0:
             # Find the path for every robot before they step 
-            robots[0].task_allocator.assign_target()
+            robots[0].task_allocator.cooperative()
         # Step each robot
         for r in robots:
             if r.step(strategy == "cooperative"):
