@@ -6,11 +6,13 @@ from robot import Robot
 from visual import *
 import json
 
-map = "maps/map.json" # small map, 5 robots
-# map = "maps/maze.json" # large maze, 8 robots
+# map = "maps/map.json" # small map, 5 robots
+map = "maps/map2.json" # medium map, 9 robots
+# map = "maps/map3.json" # large map, 12 robots
 
 # strategy = "closest_frontier"
 # strategy = "auction"
+# strategy = "competitive"
 strategy = "cooperative"
 
 animation = True
