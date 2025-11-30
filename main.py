@@ -5,15 +5,17 @@ from map import Map
 from robot import Robot
 from visual import *
 import json
+import random
 
 # map = "maps/map.json" # small map, 5 robots
-map = "maps/map2.json" # medium map, 9 robots
-# map = "maps/map3.json" # large map, 12 robots
+# map = "maps/map2.json" # medium map, 9 robots
+map = "maps/map3.json" # large map, 12 robots
 
 # strategy = "closest_frontier"
 # strategy = "auction"
 # strategy = "competitive"
 strategy = "cooperative"
+num_malicious = 5 # number of malicious robots to sample each run
 
 animation = True
 record = False
@@ -84,14 +86,26 @@ def main():
 
     # Initialize robots
     robots = [
-        Robot(Map(GRID_W, GRID_H, OBSTACLES), pos, rid+1, SENSE_RADIUS, COMM_RANGE, strategy=strategy)
+        Robot(
+            Map(GRID_W, GRID_H, OBSTACLES),
+            pos,
+            rid+1,
+            SENSE_RADIUS,
+            COMM_RANGE,
+            strategy=strategy
+        )
         for rid, pos in enumerate(ROBOTS_POS)
     ]
+    if num_malicious > 0:
+        malicious = random.sample(robots, min(num_malicious, len(robots)))
+        for r in malicious:
+            print(r.id)
+            r.is_malicious = True
     for r in robots:
         r.robots = robots  # share reference to all robots
 
     # Animation & recording setup
-    fps = 30
+    fps = 60
 
     if animation:
         screen, clock, font, video, fps = setup_pygame(GRID_W, GRID_H, CELL_SIZE, fps=fps, record=record)
@@ -130,6 +144,10 @@ def main():
                 video.write(frame_bgr)
 
             clock.tick(fps)
+        
+        trust_weights = robots[0].leaders[0].trust_weights
+        for key in trust_weights:
+            print(f"{key.id}, {trust_weights[key]}")
 
     # Finish recording
     if record and video is not None:

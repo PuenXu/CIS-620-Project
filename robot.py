@@ -8,16 +8,20 @@ from nash_eq import run_ga
 random.seed(5)
 
 class Robot:
-    def __init__(self, map, pos, id, sense_radius, comm_range=None, strategy="closest_frontier"):
+    def __init__(self, map, pos, id, sense_radius, comm_range=None, strategy="closest_frontier", is_malicious=False):
         # Config
         self.map = map
         self.pos = pos
         self.id = id
         self.sense_radius = sense_radius
         self.comm_range = comm_range
+        self.is_malicious = is_malicious
 
         self.robots = []
         self.neighbors = []
+        self.leaders = None
+        self.citizens_map = None
+        self.trust_weights = defaultdict(lambda: 1.0)
 
         self.path = []
         self.target = None
@@ -77,22 +81,51 @@ class Robot:
     
     
     # -------------------- Game Theoretic Utilities --------------------
-    def vote_on_tasks(self, tasks):
-        #assume the robot doesn't know where the non-neighbor robots are
-        local_robots = self.neighbors + [self]
+    def vote_on_tasks(self, tasks, cluster=None):
+        """
+        Produce a ballot for every robot in the provided cluster (or in
+        the local neighborhood if no cluster is provided) using GA to
+        estimate the best assignment and heuristic scores for ranking.
+        """
+        if cluster:
+            # Only vote for self and immediate neighbors within the cluster
+            neighbor_set = set(self.neighbors)
+            local_robots = [r for r in cluster if r == self or r in neighbor_set]
+        else:
+            local_robots = self.neighbors + [self]
+        task_positions = list(tasks)
         robot_positions = [r.pos for r in local_robots]
-        task_positions = tasks
+
+        vote = {}
+        if not task_positions:
+            for r in local_robots:
+                vote[r] = {"top": None, "scores": {}}
+            return vote
 
         best_allocation, _ = run_ga(robot_positions, task_positions, generations=50, pop_size=50)
 
-        vote = {}
-        for i, r in enumerate(local_robots):
-            if i < len(task_positions):
-                vote[r] = task_positions[best_allocation[i]]
-            else:
-                vote[r] = None
+        for i, robot in enumerate(local_robots):
+            top_choice = task_positions[best_allocation[i]] if i < len(task_positions) else None
+            scores = {}
+            for task in task_positions:
+                scores[task] = self.estimated_utility(robot, task)
+            vote[robot] = {"top": top_choice, "scores": scores}
+
+        if cluster:
+            for r in cluster:
+                if r not in vote:
+                    vote[r] = {"top": None, "scores": {}}
 
         return vote
+
+    def estimated_utility(self, robot, task):
+        """Estimate another robot's utility for a task using local map knowledge."""
+        info_gain = self.map.info_gain(task, robot.sense_radius)
+        dist = abs(robot.pos[0] - task[0]) + abs(robot.pos[1] - task[1])
+        util = info_gain - dist
+        if robot.is_malicious:
+            return -util
+        return util
 
     def sample_tasks(self, frontiers, len_candidates):
         """
