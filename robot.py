@@ -16,6 +16,7 @@ class Robot:
         self.sense_radius = sense_radius
         self.comm_range = comm_range
         self.is_malicious = is_malicious
+        self.use_learning = True
 
         self.robots = []
         self.neighbors = []
@@ -102,14 +103,17 @@ class Robot:
                 vote[r] = {"top": None, "scores": {}}
             return vote
 
-        best_allocation, _ = run_ga(robot_positions, task_positions, generations=50, pop_size=50)
+        best_allocation, _ = run_ga(
+            robot_positions,
+            task_positions,
+            generations=50,
+            pop_size=50,
+            invert_utility=self.is_malicious
+        )
 
         for i, robot in enumerate(local_robots):
             top_choice = task_positions[best_allocation[i]] if i < len(task_positions) else None
-            scores = {}
-            for task in task_positions:
-                scores[task] = self.estimated_utility(robot, task)
-            vote[robot] = {"top": top_choice, "scores": scores}
+            vote[robot] = {"top": top_choice, "scores": {}}
 
         if cluster:
             for r in cluster:
@@ -117,15 +121,6 @@ class Robot:
                     vote[r] = {"top": None, "scores": {}}
 
         return vote
-
-    def estimated_utility(self, robot, task):
-        """Estimate another robot's utility for a task using local map knowledge."""
-        info_gain = self.map.info_gain(task, robot.sense_radius)
-        dist = abs(robot.pos[0] - task[0]) + abs(robot.pos[1] - task[1])
-        util = info_gain - dist
-        if robot.is_malicious:
-            return -util
-        return util
 
     def sample_tasks(self, frontiers, len_candidates):
         """

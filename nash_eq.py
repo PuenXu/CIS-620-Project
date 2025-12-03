@@ -94,7 +94,7 @@ class Individual:
 # GA Algorithm Function
 # -------------------------------
 def run_ga(robots, tasks, map_obj=None, pop_size=100, generations=100, mutation_prob=0.1,
-           sense_radius=2, alpha=1.0, verbose=False):
+           sense_radius=2, alpha=1.0, verbose=False, invert_utility=False):
     """
     Run the GA for multi-robot task allocation.
     
@@ -119,8 +119,10 @@ def run_ga(robots, tasks, map_obj=None, pop_size=100, generations=100, mutation_
         for _ in range(pop_size)
     ]
 
+    fitness_key = (lambda ind: ind.fitness) if not invert_utility else (lambda ind: -ind.fitness)
+
     for gen in range(generations):
-        population.sort(key=lambda x: x.fitness)
+        population.sort(key=fitness_key)
         best = population[0]
         if verbose:
             best_utility = -best.fitness  # reverse sign
@@ -140,6 +142,6 @@ def run_ga(robots, tasks, map_obj=None, pop_size=100, generations=100, mutation_
         population = new_pop
 
     # Return final best solution
-    best = min(population, key=lambda x: x.fitness)
+    best = min(population, key=fitness_key)
     best_utility = -best.fitness
     return best.chromosome, best_utility

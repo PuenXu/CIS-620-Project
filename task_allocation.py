@@ -1,12 +1,18 @@
 import random
 import math
+import itertools
 from utils import astar
 from nash_eq import run_ga
 from collections import defaultdict
 
 PREFERENCE_FLOOR = -1e6
-TRUST_ETA = 0.2
 TRUST_EPS = 1e-3
+TRUST_NOISE_EPS = 0.01
+TRUST_TAU = 1.0
+NONE_COST = 1e6
+
+def euclidean(a, b):
+    return math.dist(a, b)
 
 # We need a way to classify leaders and citizens first; paper said 10 robots per leader but we can tune this
 def classify_leaders_and_citizens(robots, p=0.1):
@@ -65,6 +71,60 @@ def compute_preference_scores(weighted_ballots, tasks):
     if scores:
         return scores
     return {task: 0.0 for task in tasks}
+
+def best_allocation(robots, tasks):
+    """
+    Compute a theoretical best allocation and its total distance cost.
+    If tasks >= robots and the set is small, search exact unique assignments.
+    Otherwise allow task reuse and assign each robot to its nearest task.
+    Returns (mapping, cost).
+    """
+    if not tasks or not robots:
+        return {}, 0.0
+
+    num_robots = len(robots)
+    num_tasks = len(tasks)
+
+    # Unique assignment when tasks >= robots
+    if num_tasks >= num_robots:
+        # Exact for small instances
+        if num_tasks <= 8:
+            best = float("inf")
+            best_perm = None
+            task_indices = range(num_tasks)
+            for perm in itertools.permutations(task_indices, num_robots):
+                total = 0.0
+                for i, idx in enumerate(perm):
+                    total += euclidean(robots[i].pos, tasks[idx])
+                if total < best:
+                    best = total
+                    best_perm = perm
+            mapping = {}
+            if best_perm is not None:
+                for i, idx in enumerate(best_perm):
+                    mapping[robots[i]] = tasks[idx]
+            return mapping, best
+        # Greedy unique assignment for larger instances
+        mapping = {}
+        remaining_tasks = set(tasks)
+        total = 0.0
+        for r in robots:
+            if not remaining_tasks:
+                break
+            best_task = min(remaining_tasks, key=lambda t: euclidean(r.pos, t))
+            mapping[r] = best_task
+            total += euclidean(r.pos, best_task)
+            remaining_tasks.remove(best_task)
+        return mapping, total
+
+    # Task reuse allowed when robots exceed tasks
+    mapping = {}
+    total = 0.0
+    for r in robots:
+        nearest = min(tasks, key=lambda t: euclidean(r.pos, t))
+        mapping[r] = nearest
+        total += euclidean(r.pos, nearest)
+    return mapping, total
 
 def maximize_preferences(robots, tasks, preference_scores, pop_size=60, generations=60, mutation_prob=0.1):
     num_robots = len(robots)
@@ -145,52 +205,72 @@ def maximize_preferences(robots, tasks, preference_scores, pop_size=60, generati
         assignment[robot] = tasks[best_chrom[i]]
     return assignment
 
-def update_trust_weights(leader, votes, allocation):
-    """Follow-the-regularized-leader (exp-grad) update for trust weights."""
+def update_trust_weights(leader, votes, allocation, tasks, robots, voter_weights, use_learning=True):
+    """
+    Follow-the-perturbed-leader update driven by distance gaps to best allocation:
+      - pick weights via perturbed cumulative loss (done in aggregate_votes)
+      - accumulate loss per voter based on how far their suggested tasks were from the best allocation for robots they covered
+    """
     if leader is None:
         return
-    if not hasattr(leader, "trust_loss"):
-        leader.trust_loss = defaultdict(float)
-    if not hasattr(leader, "trust_weights"):
-        leader.trust_weights = defaultdict(lambda: 1.0)
+    if not use_learning:
+        return
+    if not hasattr(leader, "trust_cum_loss"):
+        leader.trust_cum_loss = defaultdict(float)
 
-    # Accumulate loss: 1 - agreement rate
-    voters = set()
+    # Best allocation for comparison
+    best_mapping, best_cost = best_allocation(robots, tasks)
+    avg_best = best_cost / max(len(robots), 1)
+
     for voter, vote in votes:
-        voters.add(voter)
-        agreements = 0
-        total = 0
-        for robot, assigned_task in allocation.items():
+        gaps = []
+        for robot, best_task in best_mapping.items():
             ballot = vote.get(robot, {})
-            if ballot.get("top") == assigned_task:
-                agreements += 1
-            total += 1
-        if total == 0:
+            voted_task = ballot.get("top")
+            if voted_task is None:
+                continue  # robot not in voter's neighborhood
+            gap = max(euclidean(robot.pos, voted_task) - euclidean(robot.pos, best_task), 0.0)
+            gaps.append(gap)
+        if not gaps:
             continue
-        loss = 1.0 - (agreements / total)
-        leader.trust_loss[voter] += loss
+        avg_gap = sum(gaps) / len(gaps)
+        norm_loss = avg_gap / max(avg_best, 1.0)
+        leader.trust_cum_loss[voter] += norm_loss
 
-    # Compute exp(-eta * cumulative loss) and normalize
-    raw_weights = {}
-    Z = 0.0
-    for voter in voters:
-        w = math.exp(-TRUST_ETA * leader.trust_loss[voter])
-        w = max(w, TRUST_EPS)
-        raw_weights[voter] = w
-        Z += w
-    if Z == 0:
-        Z = TRUST_EPS * len(raw_weights)
-    for voter, w in raw_weights.items():
-        leader.trust_weights[voter] = max(w / Z, TRUST_EPS)
-
-def aggregate_votes(votes, V, all_tasks, leader=None):
+def aggregate_votes(votes, V, all_tasks, leader=None, use_learning=True):
     if not all_tasks:
-        return {r: None for r in V}
+        return {r: None for r in V}, {}
+
+    # Build weights per voter
+    weights = {}
+    if use_learning:
+        if leader is not None and not hasattr(leader, "trust_cum_loss"):
+            leader.trust_cum_loss = defaultdict(float)
+        raw_weights = {}
+        for voter, _ in votes:
+            base_loss = leader.trust_cum_loss.get(voter, 0.0) if leader else 0.0
+            score = math.exp(-TRUST_TAU * base_loss)
+            noise = random.uniform(0.0, TRUST_NOISE_EPS)
+            raw_weights[voter] = score + noise
+        total_w = sum(raw_weights.values()) or 1.0
+        weights = {v: w / total_w for v, w in raw_weights.items()}
+    else:
+        # Uniform weights when learning disabled
+        voters = [voter for voter, _ in votes]
+        if voters:
+            uniform = 1.0 / len(voters)
+            # for voter in voters:
+            #     if voter.is_malicious:
+            #         weights[voter] = -uniform
+            #     else:
+            #         weights[voter] = uniform
+            weights = {voter: uniform for voter in voters}
+        else:
+            weights = {}
 
     ballots = defaultdict(list)
     for voter, vote in votes:
-        trust_map = getattr(leader, "trust_weights", {}) if leader else {}
-        weight = trust_map.get(voter, 1.0)
+        weight = weights.get(voter, 1.0)
         for robot, ballot in vote.items():
             ballots[robot].append((weight, ballot))
 
@@ -199,7 +279,7 @@ def aggregate_votes(votes, V, all_tasks, leader=None):
         robot_ballots = ballots.get(robot, [])
         preference_scores[robot] = compute_preference_scores(robot_ballots, all_tasks)
 
-    return maximize_preferences(V, all_tasks, preference_scores)
+    return maximize_preferences(V, all_tasks, preference_scores), weights
 
 class TaskAllocation:
     """
@@ -354,9 +434,9 @@ class TaskAllocation:
                 vote_scores = r.vote_on_tasks(tasks, cluster=V)  # dict {r_i: best task for r_i according to r}
                 votes.append((r, vote_scores))
 
-            allocation = aggregate_votes(votes, V, tasks, leader=leader)
-            update_trust_weights(leader, votes, allocation)
-
+            allocation, voter_weights = aggregate_votes(votes, V, tasks, leader=leader, use_learning=self.robot.use_learning)
+            update_trust_weights(leader, votes, allocation, tasks, V, voter_weights, use_learning=self.robot.use_learning)
+            # print(leader.trust_cum_loss)
             for i, r in enumerate(V):
                 assigned_task = allocation[r]
                 if assigned_task:
@@ -368,4 +448,3 @@ class TaskAllocation:
    
 
         
-

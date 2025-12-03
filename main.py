@@ -6,16 +6,15 @@ from robot import Robot
 from visual import *
 import json
 import random
+from collections import defaultdict
 
-# map = "maps/map.json" # small map, 5 robots
+map = "maps/map.json" # small map, 5 robots
 # map = "maps/map2.json" # medium map, 9 robots
-map = "maps/map3.json" # large map, 12 robots
+# map = "maps/map3.json" # large map, 12 robots
 
-# strategy = "closest_frontier"
-# strategy = "auction"
-# strategy = "competitive"
 strategy = "cooperative"
-num_malicious = 5 # number of malicious robots to sample each run
+num_malicious = 4 # number of malicious robots to sample each run
+use_learning = True  # set False to keep weights uniform (no learning)
 
 animation = True
 record = False
@@ -80,7 +79,7 @@ def render(screen, font, robots, merged, label_h):
     pygame.display.flip()
 
 # -------------------- Main Loop --------------------
-def main():
+def main(max_steps=None):
     # Load environment and robot configuration
     GRID_W, GRID_H, CELL_SIZE, SENSE_RADIUS, COMM_RANGE, OBSTACLES, ROBOTS_POS = load_config(map)
 
@@ -102,6 +101,7 @@ def main():
             print(r.id)
             r.is_malicious = True
     for r in robots:
+        r.use_learning = use_learning
         r.robots = robots  # share reference to all robots
 
     # Animation & recording setup
@@ -125,6 +125,8 @@ def main():
             if r.step(strategy == "cooperative"):
                 running = True
         steps += 1
+        if max_steps and steps >= max_steps:
+            break
 
         # Merge local maps into global map
         merged = merge_maps(robots)
